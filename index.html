@@ -480,20 +480,23 @@ window.firebaseFns = {
     padding: 16px 20px;
     border-top: 1px solid #FCE7F3;
     background: linear-gradient(to top, #FDF2F8, white);
+    overflow-y: auto;
+    max-height: 60%;
   }
   .subtotal-row {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .subtotal-row .label { font-size: 13px; color: #F472B6; font-weight: 500; }
-  .subtotal-row .value { font-size: 24px; font-weight: 800; color: #DB2777; }
+  .subtotal-row .value { font-size: 22px; font-weight: 800; color: #DB2777; }
 
   .payment-methods {
     display: flex;
     gap: 6px;
     margin-bottom: 12px;
+    flex-wrap: wrap;
   }
   .payment-btn {
     flex: 1;
@@ -513,8 +516,8 @@ window.firebaseFns = {
     border-color: transparent;
   }
 
-  .cash-input-wrap { margin-bottom: 12px; }
-  .cash-input-wrap label { font-size: 12px; color: #F472B6; font-weight: 500; display: block; margin-bottom: 6px; }
+  .cash-input-wrap { margin-bottom: 10px; }
+  .cash-input-wrap label { font-size: 12px; color: #F472B6; font-weight: 500; display: block; margin-bottom: 4px; }
   .cash-input-box {
     position: relative;
     display: flex;
@@ -550,21 +553,22 @@ window.firebaseFns = {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    padding: 10px 12px;
+    padding: 8px 12px;
     background: #ECFDF5;
     border-radius: 10px;
     border: 1px solid #A7F3D0;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
+  .change-row .value { font-size: 18px; }
   .change-row .label { font-size: 13px; color: #059669; font-weight: 500; }
   .change-row .value { font-size: 20px; font-weight: 800; color: #059669; }
 
   .btn-cobrar {
     width: 100%;
-    padding: 16px;
+    padding: 14px;
     border: none;
     border-radius: 14px;
-    font-size: 17px;
+    font-size: 16px;
     font-weight: 800;
     color: white;
     cursor: pointer;
@@ -582,6 +586,8 @@ window.firebaseFns = {
   }
 
   @media (max-width: 1023px) {
+    .main { flex-direction: column; height: calc(100vh - 115px); }
+    .products-area { flex: 1; height: 55%; overflow-y: auto; }
     .cart-panel {
       width: 100%;
       min-width: auto;
@@ -589,7 +595,24 @@ window.firebaseFns = {
       border-top: 1px solid #FCE7F3;
       height: 45%;
       min-height: 280px;
+      max-height: 45%;
     }
+    .cart-items { max-height: calc(45vh - 200px); }
+    .cart-footer { padding: 10px 14px; }
+    .subtotal-row .value { font-size: 20px; }
+    .cash-input-box input { font-size: 18px; padding: 8px 12px 8px 28px; }
+    .btn-cobrar { padding: 12px; font-size: 15px; }
+    .payment-methods { gap: 4px; }
+    .payment-btn { padding: 6px 4px; font-size: 11px; }
+  }
+
+  @media (max-width: 480px) {
+    .cart-panel {
+      height: 50%;
+      max-height: 50%;
+    }
+    .cart-items { max-height: calc(50vh - 180px); }
+    .products-area { height: 50%; }
   }
 
   /* HISTORY */
@@ -1101,7 +1124,10 @@ window.firebaseFns = {
       <div class="form-card">
         <h3>&#128101; Gestión de Usuarios</h3>
         <p style="font-size:12px;color:#9CA3AF;margin-bottom:12px;">Solo el administrador puede ver y gestionar usuarios</p>
-        <button class="btn-add" style="margin-bottom:16px;" onclick="showRegisterScreen()">+ Crear Nuevo Usuario</button>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <button class="btn-add" style="flex:1;" onclick="showRegisterScreen()">+ Crear Nuevo Usuario</button>
+          <button class="action-btn" style="flex:1;justify-content:center;" onclick="syncExistingUsers()">&#128260; Sincronizar</button>
+        </div>
         <div id="users-list-container">
           <div style="text-align:center;padding:20px;color:#F9A8D4;">
             <span class="loading"></span>
@@ -1414,25 +1440,38 @@ let allUsers = [];
 async function loadAllUsers() {
   if (!currentUser || currentUser.email !== SUPER_ADMIN_EMAIL) return;
 
-  const { collection, getDocs } = window.firebaseFns;
+  const { collection, getDocs, doc, deleteDoc } = window.firebaseFns;
   const container = document.getElementById('users-list-container');
 
   try {
     container.innerHTML = '<div style="text-align:center;padding:20px;color:#F9A8D4;"><span class="loading"></span><p style="margin-top:8px;font-size:13px;">Cargando usuarios...</p></div>';
 
-    const usersSnap = await getDocs(collection(db, "users"));
+    // Leer desde la subcolección del admin: users/{adminUid}/managedUsers/
+    // Esto SIEMPRE funciona porque el admin tiene permisos sobre su propio documento y subcolecciones
+    const managedSnap = await getDocs(collection(db, "users", currentUser.uid, "managedUsers"));
     allUsers = [];
 
-    usersSnap.forEach(doc => {
-      const data = doc.data();
+    managedSnap.forEach(d => {
+      const data = d.data();
       allUsers.push({
-        uid: doc.id,
+        uid: data.uid || d.id,
         businessName: data.businessName || 'Sin nombre',
-        email: data.email || data.createdByEmail || 'No disponible',
+        email: data.email || 'No disponible',
         createdAt: data.createdAt || null,
-        createdByEmail: data.createdByEmail || 'Desconocido',
-        theme: data.theme || 'pink'
+        createdByEmail: data.createdByEmail || currentUser.email,
+        theme: 'pink'
       });
+    });
+
+    // También incluir al admin mismo en la lista
+    allUsers.unshift({
+      uid: currentUser.uid,
+      businessName: businessConfig.name || 'Admin',
+      email: currentUser.email,
+      createdAt: null,
+      createdByEmail: 'Sistema',
+      theme: businessConfig.theme || 'pink',
+      isAdmin: true
     });
 
     renderUsersList();
@@ -1453,30 +1492,32 @@ function renderUsersList() {
   let html = `<div style="display:flex;flex-direction:column;gap:8px;">`;
 
   allUsers.forEach(user => {
-    const createdDate = user.createdAt ? new Date(user.createdAt).toLocaleDateString('es-SV') : 'Fecha desconocida';
+    const createdDate = user.createdAt ? new Date(user.createdAt).toLocaleDateString('es-SV') : 'N/A';
     const isCurrentUser = user.uid === currentUser.uid;
+    const isAdminUser = user.isAdmin || false;
 
     html += `
     <div class="product-list-item" style="padding:14px;${isCurrentUser ? 'border:2px solid #FBBF24;' : ''}">
       <div class="left" style="flex:1;min-width:0;">
-        <span class="emoji">${isCurrentUser ? '&#128081;' : '&#127968;'}</span>
+        <span class="emoji">${isAdminUser ? '&#128081;' : '&#127968;'}</span>
         <div style="flex:1;min-width:0;">
           <div class="name" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             ${user.businessName}
-            ${isCurrentUser ? '<span style="font-size:10px;background:#FBBF24;color:#92400E;padding:2px 6px;border-radius:4px;font-weight:700;">TÚ</span>' : ''}
+            ${isAdminUser ? '<span style="font-size:10px;background:#FBBF24;color:#92400E;padding:2px 6px;border-radius:4px;font-weight:700;">ADMIN</span>' : ''}
+            ${isCurrentUser ? '<span style="font-size:10px;background:#EC4899;color:white;padding:2px 6px;border-radius:4px;font-weight:700;">TÚ</span>' : ''}
           </div>
           <div class="meta" style="margin-top:4px;">
             <span style="display:block;">&#128231; ${user.email}</span>
-            <span style="display:block;">&#128197; Creado: ${createdDate}</span>
-            <span style="display:block;">&#128100; Por: ${user.createdByEmail}</span>
+            ${!isAdminUser ? `<span style="display:block;">&#128197; Creado: ${createdDate}</span>` : ''}
+            ${!isAdminUser ? `<span style="display:block;">&#128100; Por: ${user.createdByEmail}</span>` : ''}
           </div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
-        <button class="btn-add" style="width:auto;padding:6px 12px;font-size:12px;" onclick="resetUserPassword('${user.email}')" ${user.email === 'No disponible' ? 'disabled' : ''}>
+        ${!isAdminUser ? `<button class="btn-add" style="width:auto;padding:6px 12px;font-size:12px;" onclick="resetUserPassword('${user.email}')" ${user.email === 'No disponible' ? 'disabled' : ''}>
           &#128273; Reset Pass
-        </button>
-        ${!isCurrentUser ? `<button class="del" style="width:32px;height:32px;background:#FEE2E2;color:#EF4444;border-radius:8px;" onclick="deleteUserAccount('${user.uid}', '${user.businessName}')">&#128465;</button>` : ''}
+        </button>` : ''}
+        ${!isAdminUser ? `<button class="del" style="width:32px;height:32px;background:#FEE2E2;color:#EF4444;border-radius:8px;" onclick="deleteUserAccount('${user.uid}', '${user.businessName}')">&#128465;</button>` : ''}
       </div>
     </div>`;
   });
@@ -1505,6 +1546,76 @@ Se enviará un correo con instrucciones.`)) return;
   }
 }
 
+// ==========================================
+// SINCRONIZAR USUARIOS EXISTENTES (Manual)
+// Para usuarios creados antes de implementar managedUsers
+// ==========================================
+async function syncExistingUsers() {
+  if (!currentUser || currentUser.email !== SUPER_ADMIN_EMAIL) return;
+
+  const { collection, getDocs, doc, setDoc } = window.firebaseFns;
+  const container = document.getElementById('users-list-container');
+
+  try {
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:#F9A8D4;"><span class="loading"></span><p style="margin-top:8px;font-size:13px;">Sincronizando usuarios...</p></div>';
+
+    // Verificar qué usuarios ya están en la subcolección del admin
+    const existingSnap = await getDocs(collection(db, "users", currentUser.uid, "managedUsers"));
+    const existingUIDs = new Set();
+    existingSnap.forEach(d => existingUIDs.add(d.id));
+
+    let migratedCount = 0;
+
+    // Escanear la colección users completa (REQUIERE cambio temporal de reglas)
+    // Si falla, mostrar instrucciones
+    try {
+      const usersSnap = await getDocs(collection(db, "users"));
+      usersSnap.forEach(d => {
+        const data = d.data();
+        // Si fue creado por este admin y no está en la subcolección
+        if (data.createdBy === currentUser.uid && !existingUIDs.has(d.id) && d.id !== currentUser.uid) {
+          // Guardar en subcolección del admin
+          setDoc(doc(db, "users", currentUser.uid, "managedUsers", d.id), {
+            uid: d.id,
+            email: data.email || data.createdByEmail || 'No disponible',
+            businessName: data.businessName || 'Sin nombre',
+            createdAt: data.createdAt || new Date().toISOString(),
+            createdByEmail: currentUser.email
+          });
+          existingUIDs.add(d.id);
+          migratedCount++;
+        }
+      });
+
+      if (migratedCount > 0) {
+        showToast(`${migratedCount} usuarios sincronizados`);
+        await loadAllUsers();
+      } else {
+        showToast("No hay usuarios nuevos para sincronizar");
+        await loadAllUsers();
+      }
+    } catch (permErr) {
+      showToast("No se puede escanear la colección por permisos. Ver consola para instrucciones.");
+      container.innerHTML = `<div style="text-align:center;padding:20px;color:#F9A8D4;">
+        <p style="font-weight:600;margin-bottom:8px;">No se pudieron sincronizar usuarios antiguos</p>
+        <p style="font-size:12px;margin-bottom:12px;">Las reglas de seguridad bloquean la lectura de la colección completa.</p>
+        <div style="background:#FEF3C7;padding:12px;border-radius:8px;text-align:left;font-size:12px;color:#92400E;">
+          <p style="font-weight:700;margin-bottom:6px;">Solución manual:</p>
+          <p>1. Ve a Firebase Console → Firestore Database → Reglas</p>
+          <p>2. Cambia temporalmente las reglas:</p>
+          <p style="font-family:monospace;background:#fff;padding:4px;margin:4px 0;">match /users/{userId} {<br>  allow read: if request.auth != null;<br>  allow write: if request.auth != null && request.auth.uid == userId;<br>}</p>
+          <p>3. Haz clic en Sincronizar</p>
+          <p>4. Vuelve a las reglas originales</p>
+        </div>
+      </div>`;
+    }
+  } catch (err) {
+    console.error("Error sincronizando:", err);
+    showToast("Error al sincronizar: " + (err.message || "Error desconocido"));
+    container.innerHTML = `<div style="text-align:center;padding:20px;color:#EF4444;"><p>Error al sincronizar</p><p style="font-size:12px;">${err.message}</p></div>`;
+  }
+}
+
 async function deleteUserAccount(uid, businessName) {
   if (!confirm(`Eliminar permanentemente la cuenta de "${businessName}"?
 
@@ -1522,7 +1633,7 @@ Se eliminarán:
     showToast(`Eliminando cuenta de ${businessName}...`);
 
     // 1. Eliminar productos del usuario
-    const { collection, getDocs, deleteDoc, doc } = window.firebaseFns;
+    const { collection, getDocs, deleteDoc, doc, updateDoc } = window.firebaseFns;
     const productsSnap = await getDocs(collection(db, "users", uid, "products"));
     const deleteProducts = productsSnap.docs.map(d => deleteDoc(doc(db, "users", uid, "products", d.id)));
     await Promise.all(deleteProducts);
@@ -1535,12 +1646,15 @@ Se eliminarán:
     // 3. Eliminar documento del usuario
     await deleteDoc(doc(db, "users", uid));
 
-    // 4. Eliminar usuario de Firebase Auth (requiere Cloud Function o Admin SDK)
+    // 4. Eliminar de la subcolección del admin
+    await deleteDoc(doc(db, "users", currentUser.uid, "managedUsers", uid));
+
+    // 5. Eliminar usuario de Firebase Auth (requiere Cloud Function o Admin SDK)
     // Nota: Desde el cliente no se puede eliminar otros usuarios de Auth.
     // Se recomienda usar una Cloud Function para esto.
     // Por ahora, el usuario quedará sin datos pero seguirá existiendo en Auth.
 
-    showToast(`Cuenta "${businessName}" eliminada de la base de datos`);
+    showToast(`Cuenta "${businessName}" eliminada`);
 
     // Recargar lista
     await loadAllUsers();
@@ -1609,7 +1723,8 @@ document.getElementById("register-form").addEventListener("submit", async (e) =>
     await updateProfile(cred.user, { displayName: businessName });
 
     const { doc, setDoc, collection, addDoc } = window.firebaseFns;
-    await setDoc(doc(db, "users", cred.user.uid), {
+    // Guardar datos del nuevo usuario
+    const newUserData = {
       businessName: businessName,
       businessSub: "",
       inventoryEnabled: false,
@@ -1624,6 +1739,17 @@ document.getElementById("register-form").addEventListener("submit", async (e) =>
       },
       createdAt: new Date().toISOString(),
       createdBy: currentAuthUser.uid,
+      createdByEmail: currentAuthUser.email
+    };
+
+    await setDoc(doc(db, "users", cred.user.uid), newUserData);
+
+    // Guardar copia del usuario en subcolección del admin (SIEMPRE accesible por el admin)
+    await setDoc(doc(db, "users", currentAuthUser.uid, "managedUsers", cred.user.uid), {
+      uid: cred.user.uid,
+      email: email,
+      businessName: businessName,
+      createdAt: new Date().toISOString(),
       createdByEmail: currentAuthUser.email
     });
 
@@ -2206,6 +2332,18 @@ function applyTheme(theme) {
     .cart-count { border-radius: 999px !important; }
     .plus-badge { border-radius: 50% !important; }
     .icon-box { border-radius: 12px !important; }
+    /* Responsive fixes for mobile */
+    @media (max-width: 1023px) {
+      .cart-footer { padding: 10px 14px !important; }
+      .subtotal-row .value { font-size: 20px !important; }
+      .cash-input-box input { font-size: 18px !important; padding: 8px 12px 8px 28px !important; }
+      .btn-cobrar { padding: 12px !important; font-size: 15px !important; }
+      .payment-methods { gap: 4px !important; }
+      .payment-btn { padding: 6px 4px !important; font-size: 11px !important; }
+      .cart-header { padding: 10px 14px !important; }
+      .cart-header h3 { font-size: 12px !important; }
+      .cart-items { padding: 8px 12px !important; }
+    }
   `;
 }
 
