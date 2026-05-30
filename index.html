@@ -1413,8 +1413,8 @@ window.firebaseFns = {
 
         <div class="settings-row danger-row" onclick="openResetModal()">
           <div>
-            <div class="label" style="color:#DC2626;">🗑️ Resetear Base de Datos</div>
-            <div class="desc">Eliminar productos y ventas para empezar desde cero</div>
+            <div class="label" style="color:#DC2626;">🗑️ Borrar Historial de Ventas</div>
+            <div class="desc">Eliminar todas las ventas registradas (productos se conservan)</div>
           </div>
           <span style="color:#DC2626;font-size:18px;">›</span>
         </div>
@@ -1434,11 +1434,12 @@ window.firebaseFns = {
       <div class="form-card" style="border-color:#FECACA;background:#FEF2F2;">
         <h3 style="color:#DC2626;">Esta acción NO se puede deshacer</h3>
         <p style="font-size:13px;color:#7F1D1D;margin-bottom:12px;">
-          Se eliminarán permanentemente todos los productos y ventas registrados.
+          Se eliminarán permanentemente todas las <strong>ventas</strong> registradas.<br>
+          <span style="color:#059669;">✓ Tus productos y categorías se conservarán.</span>
         </p>
 
         <div style="margin-bottom:16px;">
-          <label style="display:block;font-size:12px;font-weight:600;color:#DC2626;margin-bottom:6px;">Ámbito del reseteo:</label>
+          <label style="display:block;font-size:12px;font-weight:600;color:#DC2626;margin-bottom:6px;">Ámbito del borrado de ventas:</label>
           <div class="cat-btns" style="flex-direction:column;gap:8px;">
             <button class="cat-btn reset-scope-btn active" id="reset-scope-mine" onclick="setResetScope('mine')" style="text-align:left;justify-content:flex-start;">
               <span style="font-size:16px;margin-right:8px;">👤</span> Solo mis datos (productos + ventas)
@@ -3178,7 +3179,7 @@ async function executeReset() {
   try {
     if (resetScope === 'mine') {
       await deleteUserData(userId);
-      showToast('✅ Tus datos han sido eliminados');
+      showToast('✅ Tus ventas han sido eliminadas');
     } else if (resetScope === 'all') {
       if (!currentUser || currentUser.email !== SUPER_ADMIN_EMAIL) {
         showToast('❌ No tienes permisos para esta acción');
@@ -3187,7 +3188,7 @@ async function executeReset() {
         return;
       }
       await deleteAllUsersData();
-      showToast('✅ Todos los datos han sido eliminados');
+      showToast('✅ Todas las ventas han sido eliminadas');
     }
 
     // Limpiar estado local
@@ -3215,28 +3216,11 @@ async function executeReset() {
 async function deleteUserData(uid) {
   const { collection, getDocs, deleteDoc, doc, writeBatch } = window.firebaseFns;
 
-  // 1. Eliminar productos en lotes de 500
-  const productsRef = collection(db, 'users', uid, 'products');
-  let productsSnap = await getDocs(productsRef);
-  let batch = writeBatch(db);
-  let count = 0;
-
-  for (const d of productsSnap.docs) {
-    batch.delete(doc(db, 'users', uid, 'products', d.id));
-    count++;
-    if (count >= 500) {
-      await batch.commit();
-      batch = writeBatch(db);
-      count = 0;
-    }
-  }
-  if (count > 0) await batch.commit();
-
-  // 2. Eliminar ventas en lotes de 500
+  // SOLO eliminar ventas (sales) - NO tocar productos ni categorías
   const salesRef = collection(db, 'users', uid, 'sales');
   let salesSnap = await getDocs(salesRef);
-  batch = writeBatch(db);
-  count = 0;
+  let batch = writeBatch(db);
+  let count = 0;
 
   for (const d of salesSnap.docs) {
     batch.delete(doc(db, 'users', uid, 'sales', d.id));
@@ -3248,19 +3232,6 @@ async function deleteUserData(uid) {
     }
   }
   if (count > 0) await batch.commit();
-
-  // 3. Resetear configuración a valores por defecto (conservar categorías)
-  const { setDoc } = window.firebaseFns;
-  await setDoc(doc(db, 'users', uid), {
-    businessName: businessConfig.name,
-    businessSub: businessConfig.sub,
-    inventoryEnabled: false,
-    taxIncluded: true,
-    notesEnabled: false,
-    theme: businessConfig.theme || 'pink',
-    categories: businessConfig.categories || null,
-    updatedAt: new Date().toISOString()
-  });
 }
 
 async function deleteAllUsersData() {
