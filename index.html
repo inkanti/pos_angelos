@@ -1487,6 +1487,10 @@ window.firebaseFns = {
           <input type="number" id="new-stock" placeholder="0" min="0">
         </div>
         <div class="form-group">
+          <label>Emoji / Icono (opcional)</label>
+          <input type="text" id="new-emoji" placeholder="Ej: 🍓 (deja vacío para usar el de la categoría)" maxlength="10" style="font-size:18px;">
+        </div>
+        <div class="form-group">
           <label>Categoria</label>
           <div class="cat-btns" id="admin-cat-btns">
             <!-- Se genera dinámicamente -->
@@ -2670,7 +2674,7 @@ function renderProducts() {
       html += `<button class="product-btn" onclick="addToCart('${p.firestoreId}')" ${p.stock <= 0 && businessConfig.inventoryEnabled ? 'disabled style="opacity:0.5"' : ''}>
         ${stockBadge}
         <span class="plus-badge">+</span>
-        <span class="emoji">${getCatIcon(p.category)}</span>
+        <span class="emoji">${p.emoji || getCatIcon(p.category)}</span>
         <span class="name">${p.name}</span>
         <span class="price">$${p.price.toFixed(2)}</span>
       </button>`;
@@ -2714,7 +2718,7 @@ function renderCart() {
       const p = products.find(x => x.firestoreId === item.id);
       if (!p) return;
       html += `<div class="cart-item">
-        <span class="emoji">${getCatIcon(p.category)}</span>
+        <span class="emoji">${p.emoji || getCatIcon(p.category)}</span>
         <div class="info"><div class="n">${p.name}</div><div class="p">$${p.price.toFixed(2)} c/u</div></div>
         <div class="cart-stepper">
           <button onclick="changeQty(${idx},-1)">-</button>
@@ -3016,17 +3020,20 @@ async function addProduct() {
   const name = document.getElementById("new-name").value.trim();
   const price = parseFloat(document.getElementById("new-price").value);
   const stock = parseInt(document.getElementById("new-stock").value) || 0;
+  const emoji = document.getElementById("new-emoji").value.trim();
   if (!name || isNaN(price) || price <= 0) return;
 
   const { collection, addDoc } = window.firebaseFns;
   await addDoc(collection(db, "users", userId, "products"), {
     name, price, category: newCat, stock,
+    emoji: emoji || null,
     createdAt: new Date().toISOString()
   });
 
   document.getElementById("new-name").value = "";
   document.getElementById("new-price").value = "";
   document.getElementById("new-stock").value = "";
+  document.getElementById("new-emoji").value = "";
   renderAdminList();
   showToast("Producto agregado");
 }
@@ -3046,7 +3053,7 @@ function renderAdminList() {
   list.innerHTML = products.map(p => `
     <div class="product-list-item">
       <div class="left">
-        <span class="emoji">${getCatIcon(p.category)}</span>
+        <span class="emoji">${p.emoji || getCatIcon(p.category)}</span>
         <div><div class="name">${p.name}</div><div class="meta">$${p.price.toFixed(2)} - ${p.category} ${businessConfig.inventoryEnabled ? '(Stock: ' + (p.stock || 0) + ')' : ''}</div></div>
       </div>
       <button class="del" onclick="deleteProduct('${p.firestoreId}')">&#128465;</button>
