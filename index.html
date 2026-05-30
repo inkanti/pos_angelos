@@ -1443,7 +1443,7 @@ window.firebaseFns = {
             <button class="cat-btn reset-scope-btn active" id="reset-scope-mine" onclick="setResetScope('mine')" style="text-align:left;justify-content:flex-start;">
               <span style="font-size:16px;margin-right:8px;">👤</span> Solo mis datos (productos + ventas)
             </button>
-            <button class="cat-btn reset-scope-btn" id="reset-scope-all" onclick="setResetScope('all')" style="text-align:left;justify-content:flex-start;">
+            <button class="cat-btn reset-scope-btn hidden" id="reset-scope-all" onclick="setResetScope('all')" style="text-align:left;justify-content:flex-start;">
               <span style="font-size:16px;margin-right:8px;">🌍</span> TODOS los negocios (solo Admin)
             </button>
           </div>
@@ -3134,6 +3134,15 @@ function openResetModal() {
   document.getElementById('reset-modal').classList.remove('hidden');
   document.getElementById('reset-confirm-input').value = '';
   document.getElementById('btn-execute-reset').disabled = true;
+
+  // Mostrar opción "TODOS" solo si es admin
+  const allBtn = document.getElementById('reset-scope-all');
+  if (currentUser && currentUser.email === SUPER_ADMIN_EMAIL) {
+    allBtn.classList.remove('hidden');
+  } else {
+    allBtn.classList.add('hidden');
+  }
+
   setResetScope('mine');
 }
 
@@ -3142,16 +3151,15 @@ function closeResetModal() {
 }
 
 function setResetScope(scope) {
+  // Bloqueo de seguridad: solo admin puede seleccionar "all"
+  if (scope === 'all' && (!currentUser || currentUser.email !== SUPER_ADMIN_EMAIL)) {
+    showToast('Solo el administrador puede resetear todos los negocios');
+    scope = 'mine';
+  }
+
   resetScope = scope;
   document.getElementById('reset-scope-mine').classList.toggle('active', scope === 'mine');
   document.getElementById('reset-scope-all').classList.toggle('active', scope === 'all');
-
-  // Solo admin puede seleccionar "todos"
-  if (scope === 'all' && currentUser?.email !== SUPER_ADMIN_EMAIL) {
-    showToast('Solo el administrador puede resetear todos los negocios');
-    setResetScope('mine');
-    return;
-  }
 }
 
 function checkResetConfirm(val) {
@@ -3172,8 +3180,10 @@ async function executeReset() {
       await deleteUserData(userId);
       showToast('✅ Tus datos han sido eliminados');
     } else if (resetScope === 'all') {
-      if (currentUser?.email !== SUPER_ADMIN_EMAIL) {
-        showToast('❌ No tienes permisos');
+      if (!currentUser || currentUser.email !== SUPER_ADMIN_EMAIL) {
+        showToast('❌ No tienes permisos para esta acción');
+        btn.disabled = false;
+        btn.innerHTML = '🗑️ Confirmar Eliminación';
         return;
       }
       await deleteAllUsersData();
