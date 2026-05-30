@@ -32,7 +32,8 @@ import {
   updateDoc,
   onSnapshot,
   enableIndexedDbPersistence,
-  serverTimestamp
+  serverTimestamp,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -64,7 +65,7 @@ window.firebaseFns = {
   onAuthStateChanged,
   updateProfile,
   doc, setDoc, getDoc, collection, addDoc, getDocs, query, orderBy, where,
-  deleteDoc, updateDoc, onSnapshot, serverTimestamp
+  deleteDoc, updateDoc, onSnapshot, serverTimestamp, writeBatch
 };
 </script>
 
@@ -954,6 +955,16 @@ window.firebaseFns = {
   .settings-row:last-child { border-bottom: none; }
   .settings-row .label { font-size: 14px; font-weight: 600; color: #374151; }
   .settings-row .desc { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
+
+  /* DANGER ZONE */
+  .danger-zone { border-color: #FECACA !important; }
+  .danger-zone h3 { color: #DC2626 !important; }
+  .danger-row { cursor: pointer; transition: background 0.15s; }
+  .danger-row:hover { background: #FEF2F2; }
+  .danger-row:active { background: #FEE2E2; }
+  .reset-scope-btn { text-align: left; justify-content: flex-start; padding: 10px 14px; }
+  .reset-scope-btn.active { background: linear-gradient(135deg, #DC2626, #EF4444) !important; color: white !important; border-color: transparent !important; }
+  #btn-execute-reset:disabled { background: #FECACA !important; cursor: not-allowed; }
   .toggle {
     width: 48px;
     height: 26px;
@@ -1393,6 +1404,60 @@ window.firebaseFns = {
             <button class="cat-btn" id="theme-purple" onclick="setTheme('purple')">Morado</button>
           </div>
         </div>
+      </div>
+
+      <!-- ZONA PELIGROSA -->
+      <div class="form-card danger-zone">
+        <h3>⚠️ Zona Peligrosa</h3>
+        <p style="font-size:12px;color:#9CA3AF;margin-bottom:12px;">Acciones irreversibles. Usar con precaución.</p>
+
+        <div class="settings-row danger-row" onclick="openResetModal()">
+          <div>
+            <div class="label" style="color:#DC2626;">🗑️ Resetear Base de Datos</div>
+            <div class="desc">Eliminar productos y ventas para empezar desde cero</div>
+          </div>
+          <span style="color:#DC2626;font-size:18px;">›</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- RESET MODAL -->
+<div class="modal-overlay hidden" id="reset-modal" onclick="if(event.target===this)closeResetModal()">
+  <div class="modal">
+    <div class="modal-header" style="background:linear-gradient(135deg,#DC2626,#EF4444);">
+      <h2 style="color:white;">⚠️ Resetear Base de Datos</h2>
+      <button class="close-btn" style="background:rgba(255,255,255,0.2);color:white;" onclick="closeResetModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-card" style="border-color:#FECACA;background:#FEF2F2;">
+        <h3 style="color:#DC2626;">Esta acción NO se puede deshacer</h3>
+        <p style="font-size:13px;color:#7F1D1D;margin-bottom:12px;">
+          Se eliminarán permanentemente todos los productos y ventas registrados.
+        </p>
+
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#DC2626;margin-bottom:6px;">Ámbito del reseteo:</label>
+          <div class="cat-btns" style="flex-direction:column;gap:8px;">
+            <button class="cat-btn reset-scope-btn active" id="reset-scope-mine" onclick="setResetScope('mine')" style="text-align:left;justify-content:flex-start;">
+              <span style="font-size:16px;margin-right:8px;">👤</span> Solo mis datos (productos + ventas)
+            </button>
+            <button class="cat-btn reset-scope-btn" id="reset-scope-all" onclick="setResetScope('all')" style="text-align:left;justify-content:flex-start;">
+              <span style="font-size:16px;margin-right:8px;">🌍</span> TODOS los negocios (solo Admin)
+            </button>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#DC2626;margin-bottom:6px;">Confirmación de seguridad:</label>
+          <p style="font-size:12px;color:#991B1B;margin-bottom:8px;">Escribe <strong>"BORRAR TODO"</strong> para confirmar:</p>
+          <input type="text" id="reset-confirm-input" placeholder="BORRAR TODO" style="width:100%;padding:10px 14px;border:2px solid #FECACA;border-radius:12px;font-size:14px;color:#7F1D1D;background:white;outline:none;text-transform:uppercase;" oninput="checkResetConfirm(this.value)">
+        </div>
+
+        <button class="btn-add" id="btn-execute-reset" style="background:linear-gradient(135deg,#DC2626,#EF4444);" onclick="executeReset()" disabled>
+          🗑️ Confirmar Eliminación
+        </button>
       </div>
     </div>
   </div>
@@ -3061,6 +3126,145 @@ function updateClock() {
 // ===== UTILS =====
 function formatDate(d) { return d.toISOString().split("T")[0]; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
+
+// ===== RESET DATABASE =====
+let resetScope = 'mine';
+
+function openResetModal() {
+  document.getElementById('reset-modal').classList.remove('hidden');
+  document.getElementById('reset-confirm-input').value = '';
+  document.getElementById('btn-execute-reset').disabled = true;
+  setResetScope('mine');
+}
+
+function closeResetModal() {
+  document.getElementById('reset-modal').classList.add('hidden');
+}
+
+function setResetScope(scope) {
+  resetScope = scope;
+  document.getElementById('reset-scope-mine').classList.toggle('active', scope === 'mine');
+  document.getElementById('reset-scope-all').classList.toggle('active', scope === 'all');
+
+  // Solo admin puede seleccionar "todos"
+  if (scope === 'all' && currentUser?.email !== SUPER_ADMIN_EMAIL) {
+    showToast('Solo el administrador puede resetear todos los negocios');
+    setResetScope('mine');
+    return;
+  }
+}
+
+function checkResetConfirm(val) {
+  const btn = document.getElementById('btn-execute-reset');
+  btn.disabled = val.trim().toUpperCase() !== 'BORRAR TODO';
+}
+
+async function executeReset() {
+  const confirmInput = document.getElementById('reset-confirm-input').value.trim().toUpperCase();
+  if (confirmInput !== 'BORRAR TODO') return;
+
+  const btn = document.getElementById('btn-execute-reset');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span> Eliminando...';
+
+  try {
+    if (resetScope === 'mine') {
+      await deleteUserData(userId);
+      showToast('✅ Tus datos han sido eliminados');
+    } else if (resetScope === 'all') {
+      if (currentUser?.email !== SUPER_ADMIN_EMAIL) {
+        showToast('❌ No tienes permisos');
+        return;
+      }
+      await deleteAllUsersData();
+      showToast('✅ Todos los datos han sido eliminados');
+    }
+
+    // Limpiar estado local
+    cart = [];
+    products = [];
+    transactions = [];
+    unsavedSales = [];
+    localStorage.removeItem('angelos_unsaved_' + userId);
+
+    closeResetModal();
+
+    // Recargar para reflejar cambios
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+
+  } catch (err) {
+    console.error('Error en reset:', err);
+    showToast('❌ Error: ' + (err.message || 'No se pudo completar'));
+    btn.disabled = false;
+    btn.innerHTML = '🗑️ Confirmar Eliminación';
+  }
+}
+
+async function deleteUserData(uid) {
+  const { collection, getDocs, deleteDoc, doc, writeBatch } = window.firebaseFns;
+
+  // 1. Eliminar productos en lotes de 500
+  const productsRef = collection(db, 'users', uid, 'products');
+  let productsSnap = await getDocs(productsRef);
+  let batch = writeBatch(db);
+  let count = 0;
+
+  for (const d of productsSnap.docs) {
+    batch.delete(doc(db, 'users', uid, 'products', d.id));
+    count++;
+    if (count >= 500) {
+      await batch.commit();
+      batch = writeBatch(db);
+      count = 0;
+    }
+  }
+  if (count > 0) await batch.commit();
+
+  // 2. Eliminar ventas en lotes de 500
+  const salesRef = collection(db, 'users', uid, 'sales');
+  let salesSnap = await getDocs(salesRef);
+  batch = writeBatch(db);
+  count = 0;
+
+  for (const d of salesSnap.docs) {
+    batch.delete(doc(db, 'users', uid, 'sales', d.id));
+    count++;
+    if (count >= 500) {
+      await batch.commit();
+      batch = writeBatch(db);
+      count = 0;
+    }
+  }
+  if (count > 0) await batch.commit();
+
+  // 3. Resetear configuración a valores por defecto (conservar categorías)
+  const { setDoc } = window.firebaseFns;
+  await setDoc(doc(db, 'users', uid), {
+    businessName: businessConfig.name,
+    businessSub: businessConfig.sub,
+    inventoryEnabled: false,
+    taxIncluded: true,
+    notesEnabled: false,
+    theme: businessConfig.theme || 'pink',
+    categories: businessConfig.categories || null,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+async function deleteAllUsersData() {
+  const { collection, getDocs, deleteDoc, doc, writeBatch } = window.firebaseFns;
+
+  // Obtener todos los usuarios desde la subcolección del admin
+  const adminUsersSnap = await getDocs(collection(db, 'users', currentUser.uid, 'managedUsers'));
+  const uidsToDelete = adminUsersSnap.docs.map(d => d.id);
+  uidsToDelete.push(currentUser.uid); // Incluir al admin
+
+  for (const uid of uidsToDelete) {
+    await deleteUserData(uid);
+  }
+}
 
 // ===== INIT =====
 initAuth();
